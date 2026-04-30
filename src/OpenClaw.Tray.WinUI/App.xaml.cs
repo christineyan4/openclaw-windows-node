@@ -392,107 +392,51 @@ public partial class App : Application
 
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
     {
-        // Left-click: show custom popup menu
-        ShowTrayMenuPopup();
+        // Left-click: show native flyout menu
+        ShowTrayMenuNative();
     }
 
     private void OnTrayContextMenu(TrayIcon sender, TrayIconEventArgs e)
     {
-        // Right-click: show custom popup menu
-        ShowTrayMenuPopup();
+        // Right-click: show native flyout menu
+        ShowTrayMenuNative();
     }
 
     private MenuFlyout BuildTrayMenuFlyout()
     {
-        // Pre-fetch data (fire and forget - flyout will show with cached data)
-        if (_gatewayClient != null && _currentStatus == ConnectionStatus.Connected)
-        {
-            try
-            {
-                _ = _gatewayClient.CheckHealthAsync();
-                _ = _gatewayClient.RequestSessionsAsync();
-                _ = _gatewayClient.RequestUsageAsync();
-            }
-            catch { /* ignore */ }
-        }
-
         var flyout = new MenuFlyout();
-        
-        // Brand header
-        var header = new MenuFlyoutItem { Text = "🦞 Molty", IsEnabled = false };
-        header.FontWeight = Microsoft.UI.Text.FontWeights.Bold;
-        flyout.Items.Add(header);
-        flyout.Items.Add(new MenuFlyoutSeparator());
 
-        // Status
+        // Brand + status
+        var brandItem = new MenuFlyoutItem { Text = "🦞 Molty", IsEnabled = false, FontWeight = Microsoft.UI.Text.FontWeights.Bold };
+        flyout.Items.Add(brandItem);
+
         var statusIcon = MenuDisplayHelper.GetStatusIcon(_currentStatus);
-        var statusItem = new MenuFlyoutItem { Text = $"{statusIcon} Status: {_currentStatus}" };
-        statusItem.Click += (s, e) => ShowStatusDetail();
+        var statusText = $"{statusIcon} Status: {LocalizationHelper.GetConnectionStatusText(_currentStatus)}";
+        var statusItem = new MenuFlyoutItem { Text = statusText, IsEnabled = false };
         flyout.Items.Add(statusItem);
 
-        // Activity (if any)
-        if (_currentActivity != null && _currentActivity.Kind != OpenClaw.Shared.ActivityKind.Idle)
-        {
-            flyout.Items.Add(new MenuFlyoutItem 
-            { 
-                Text = $"{_currentActivity.Glyph} {_currentActivity.DisplayText}", 
-                IsEnabled = false 
-            });
-        }
-
-        // Usage
-        if (_lastUsage != null)
-        {
-            flyout.Items.Add(new MenuFlyoutItem 
-            { 
-                Text = $"📊 {_lastUsage.DisplayText}", 
-                IsEnabled = false 
-            });
-        }
-
         flyout.Items.Add(new MenuFlyoutSeparator());
 
-        // Sessions
-        if (_lastSessions.Length > 0)
-        {
-            var sessionsMenu = new MenuFlyoutSubItem { Text = $"📋 {string.Format(LocalizationHelper.GetString("Menu_SessionsFormat"), _lastSessions.Length)}" };
-            foreach (var session in _lastSessions.Take(5))
-            {
-                var sessionItem = new MenuFlyoutItem { Text = session.DisplayText };
-                var sessionKey = session.Key;
-                sessionItem.Click += (s, e) => OpenDashboard($"sessions/{sessionKey}");
-                sessionsMenu.Items.Add(sessionItem);
-            }
-            flyout.Items.Add(sessionsMenu);
-        }
+        // Core actions — each opens a real window or the main window
+        var openAppItem = new MenuFlyoutItem { Text = "🦞 Open OpenClaw" };
+        openAppItem.Click += (s, e) => ShowMainWindow("overview");
+        flyout.Items.Add(openAppItem);
 
-        // Quick actions
-        var dashboardItem = new MenuFlyoutItem { Text = "🌐 Open Dashboard" };
-        dashboardItem.Click += (s, e) => OpenDashboard();
-        flyout.Items.Add(dashboardItem);
+        var webChatItem = new MenuFlyoutItem { Text = "💬 Open Web Chat" };
+        webChatItem.Click += (s, e) => ShowWebChat();
+        flyout.Items.Add(webChatItem);
 
-        var chatItem = new MenuFlyoutItem { Text = "💬 Web Chat" };
-        chatItem.Click += (s, e) => ShowWebChat();
-        flyout.Items.Add(chatItem);
-
-        var quickSendItem = new MenuFlyoutItem { Text = "✉️ Quick Send" };
+        var quickSendItem = new MenuFlyoutItem { Text = "📤 Quick Send..." };
         quickSendItem.Click += (s, e) => ShowQuickSend();
         flyout.Items.Add(quickSendItem);
 
-        var historyItem = new MenuFlyoutItem { Text = "📜 Notification History" };
-        historyItem.Click += (s, e) => ShowNotificationHistory();
-        flyout.Items.Add(historyItem);
+        var activityItem = new MenuFlyoutItem { Text = "⚡ Recent Activity..." };
+        activityItem.Click += (s, e) => ShowMainWindow("activity");
+        flyout.Items.Add(activityItem);
 
-        flyout.Items.Add(new MenuFlyoutSeparator());
-
-        // Settings & Exit
-        var settingsItem = new MenuFlyoutItem { Text = "⚙️ Settings" };
-        settingsItem.Click += (s, e) => ShowSettings();
+        var settingsItem = new MenuFlyoutItem { Text = "⚙️ Settings..." };
+        settingsItem.Click += (s, e) => ShowMainWindow("settings");
         flyout.Items.Add(settingsItem);
-
-        var logItem = new MenuFlyoutItem { Text = "📄 View Log" };
-        logItem.Click += (s, e) => OpenLogFile();
-        flyout.Items.Add(logItem);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
@@ -501,6 +445,42 @@ public partial class App : Application
         flyout.Items.Add(exitItem);
 
         return flyout;
+    }
+
+    private void ShowTrayMenuNative()
+    {
+        try
+        {
+            var anchor = _keepAliveWindow?.Content as FrameworkElement;
+            if (anchor?.XamlRoot == null)
+            {
+                Logger.Warn("Cannot show tray menu — keep-alive window not ready");
+                return;
+            }
+
+            // Pre-fetch latest data
+            if (_gatewayClient != null && _currentStatus == ConnectionStatus.Connected)
+            {
+                try
+                {
+                    _ = _gatewayClient.CheckHealthAsync();
+                    _ = _gatewayClient.RequestSessionsAsync();
+                    _ = _gatewayClient.RequestUsageAsync();
+                }
+                catch { /* ignore */ }
+            }
+
+            var flyout = BuildTrayMenuFlyout();
+            flyout.ShowAt(anchor, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+            {
+                Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Auto,
+                ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Standard
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to show tray menu: {ex.Message}");
+        }
     }
 
     private async void ShowTrayMenuPopup()
