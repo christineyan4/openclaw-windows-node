@@ -84,6 +84,7 @@ public partial class App : Application
     private static readonly TimeSpan SessionSwitchDebounce = TimeSpan.FromSeconds(3);
 
     // Windows (created on demand)
+    private MainWindow? _mainWindow;
     private SettingsWindow? _settingsWindow;
     private WebChatWindow? _webChatWindow;
     private StatusDetailWindow? _statusDetailWindow;
@@ -1875,6 +1876,20 @@ public partial class App : Application
     #endregion
 
     #region Window Management
+
+    private void ShowMainWindow(string? navigateTo = null)
+    {
+        if (_mainWindow == null || _mainWindow.IsClosed)
+        {
+            _mainWindow = new MainWindow();
+            _mainWindow.Closed += (s, e) => _mainWindow = null;
+        }
+
+        if (navigateTo != null)
+            _mainWindow.NavigateTo(navigateTo);
+
+        _mainWindow.Activate();
+    }
 
     private void ShowSettings()
     {

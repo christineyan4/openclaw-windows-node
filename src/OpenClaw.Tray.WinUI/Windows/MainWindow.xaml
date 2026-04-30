@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winex:WindowEx
+    x:Class="OpenClawTray.Windows.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winex="using:WinUIEx"
+    Title="OpenClaw"
+    MinWidth="700" MinHeight="500">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop/>
+    </Window.SystemBackdrop>
+
+    <NavigationView
+        x:Name="NavView"
+        IsSettingsVisible="False"
+        IsBackButtonVisible="Collapsed"
+        PaneDisplayMode="Left"
+        SelectionChanged="NavView_SelectionChanged">
+
+        <NavigationView.MenuItems>
+            <NavigationViewItem Content="Overview" Tag="overview">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE80F;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="Activity" Tag="activity">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xEA62;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="Sessions" Tag="sessions">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE8F2;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="Node" Tag="node">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE7F7;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="Diagnostics" Tag="diagnostics">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE9D9;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="Settings" Tag="settings">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE713;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.MenuItems>
+
+        <Frame x:Name="ContentFrame"/>
+    </NavigationView>
+</winex:WindowEx>
