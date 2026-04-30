@@ -4,10 +4,57 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Padding="24">
-        <TextBlock Text="Settings — coming soon"
-                   Style="{StaticResource SubtitleTextBlockStyle}"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Center"/>
-    </Grid>
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="16">
+            <TextBlock Text="Settings" Style="{StaticResource SubtitleTextBlockStyle}"/>
+
+            <!-- Current settings (read-only) -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Current Configuration" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+
+                    <Grid RowSpacing="8" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Gateway URL" Grid.Row="0" Grid.Column="0"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="GatewayUrlText" Text="—" Grid.Row="0" Grid.Column="1"
+                                   IsTextSelectionEnabled="True"/>
+
+                        <TextBlock Text="Connection" Grid.Row="1" Grid.Column="0"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="ConnectionText" Text="—" Grid.Row="1" Grid.Column="1"/>
+
+                        <TextBlock Text="Node Mode" Grid.Row="2" Grid.Column="0"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="NodeModeText" Text="—" Grid.Row="2" Grid.Column="1"/>
+
+                        <TextBlock Text="Auto-start" Grid.Row="3" Grid.Column="0"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="AutoStartText" Text="—" Grid.Row="3" Grid.Column="1"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Actions -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="8">
+                    <Button Content="Open Full Settings…" Click="OnOpenSettings"
+                            Style="{StaticResource AccentButtonStyle}"/>
+                    <TextBlock Text="Opens the full settings window with SSH tunnel, MCP, topology, and advanced options."
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </Page>

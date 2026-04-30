@@ -1857,6 +1857,42 @@ public partial class App : Application
 
     #region Window Management
 
+    // --- Page data access (internal for NavigationView pages) ---
+    internal ConnectionStatus CurrentStatus => _currentStatus;
+    internal SettingsManager? Settings => _settings;
+    internal SessionInfo[] LastSessions => _lastSessions;
+    internal GatewayNodeInfo[] LastNodes => _lastNodes;
+    internal ChannelHealth[] LastChannels => _lastChannels;
+    internal GatewayUsageInfo? LastUsage => _lastUsage;
+    internal NodeService? CurrentNodeService => _nodeService;
+    internal AgentActivity? CurrentActivity => _currentActivity;
+    internal GatewayCommandCenterState GetCommandCenterState() => BuildCommandCenterState();
+
+    internal void RequestOpenDashboard(string? path = null) => OpenDashboard(path);
+    internal void RequestShowWebChat() => ShowWebChat();
+    internal void RequestShowQuickSend() => ShowQuickSend();
+    internal void RequestToggleChannel(string name) => ToggleChannel(name);
+    internal void RequestRestartSshTunnel() => RestartSshTunnel();
+    internal Task RequestHealthCheckAsync() => RunHealthCheckAsync(userInitiated: true);
+    internal Task RequestCheckUpdatesAsync() => CheckForUpdatesUserInitiatedAsync();
+    internal Task RequestSessionActionAsync(string action, string sessionKey, string? value = null) => ExecuteSessionActionAsync(action, sessionKey, value);
+    internal void RequestShowSetupWizard() => _ = ShowSetupWizardAsync();
+    internal void RequestToggleAutoStart() => ToggleAutoStart();
+    internal void RequestOpenLogFile() => OpenLogFile();
+    internal void RequestOpenLogFolder() => OpenLogFolder();
+    internal void RequestOpenConfigFolder() => OpenConfigFolder();
+    internal void RequestOpenDiagnosticsFolder() => OpenDiagnosticsFolder();
+    internal void RequestCopySupportContext() => CopySupportContext();
+    internal void RequestCopyDebugBundle() => CopyDebugBundle();
+    internal void RequestCopyBrowserSetupGuidance() => CopyBrowserSetupGuidance();
+    internal void RequestCopyPortDiagnostics() => CopyPortDiagnostics();
+    internal void RequestCopyCapabilityDiagnostics() => CopyCapabilityDiagnostics();
+    internal void RequestCopyNodeInventory() => CopyNodeInventory();
+    internal void RequestCopyChannelSummary() => CopyChannelSummary();
+    internal void RequestCopyActivitySummary() => CopyActivitySummary();
+    internal void RequestCopyExtensibilitySummary() => CopyExtensibilitySummary();
+    internal void ShowSettingsWindow() => ShowSettings();
+
     private void ShowMainWindow(string? navigateTo = null)
     {
         if (_mainWindow == null || _mainWindow.IsClosed)
