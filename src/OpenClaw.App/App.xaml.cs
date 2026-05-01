@@ -54,6 +54,9 @@ public partial class App : Application
         Tray = new TrayService(_dispatcherQueue);
         Notifications = new NotificationService(_dispatcherQueue);
 
+        // Give tray access to gateway state for menu building
+        Tray.Gateway = Gateway;
+
         // Wire gateway state changes to tray icon
         Gateway.StateChanged += (_, _) =>
         {
@@ -91,6 +94,8 @@ public partial class App : Application
         var url = Settings.GetEffectiveGatewayUrl();
         var token = Settings.Token;
 
+        Logger.Info($"Gateway connect: url={url}, token={(string.IsNullOrEmpty(token) ? "(empty)" : token[..Math.Min(8, token.Length)] + "...")}");
+
         if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(token))
         {
             Logger.Warn("No gateway URL or token configured — skipping connection");
@@ -101,10 +106,11 @@ public partial class App : Application
         {
             var rules = Settings.UserRules.Count > 0 ? Settings.UserRules : null;
             await Gateway.ConnectAsync(url, token, rules, Settings.PreferStructuredCategories);
+            Logger.Info($"Gateway connected, status={Gateway.CurrentStatus}");
         }
         catch (Exception ex)
         {
-            Logger.Error($"Gateway connection failed: {ex.Message}");
+            Logger.Error($"Gateway connection failed: {ex}");
         }
     }
 

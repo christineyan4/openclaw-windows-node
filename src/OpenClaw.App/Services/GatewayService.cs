@@ -54,7 +54,7 @@ public sealed class GatewayService : IDisposable
             await _client.DisconnectAsync();
         }
 
-        _client = new OpenClawGatewayClient(gatewayUrl, token);
+        _client = new OpenClawGatewayClient(gatewayUrl, token, new AppLogger());
         if (userRules is { Count: > 0 })
             _client.SetUserRules(userRules);
         _client.SetPreferStructuredCategories(preferStructured);
@@ -131,11 +131,17 @@ public sealed class GatewayService : IDisposable
     }
 
     // --- Handlers (marshal to UI thread) ---
-    private void OnStatusChanged(object? s, ConnectionStatus status) =>
+    private void OnStatusChanged(object? s, ConnectionStatus status)
+    {
+        Logger.Info($"[GatewayService] StatusChanged → {status}");
         PostUpdate(() => { CurrentStatus = status; AuthFailureMessage = null; });
+    }
 
-    private void OnAuthFailed(object? s, string msg) =>
+    private void OnAuthFailed(object? s, string msg)
+    {
+        Logger.Error($"[GatewayService] AuthFailed: {msg}");
         PostUpdate(() => { CurrentStatus = ConnectionStatus.Error; AuthFailureMessage = msg; });
+    }
 
     private void OnActivityChanged(object? s, AgentActivity? a) =>
         PostUpdate(() => { CurrentActivity = a; });
@@ -198,4 +204,16 @@ public sealed class GatewayService : IDisposable
             _client = null;
         }
     }
+}
+
+/// <summary>
+/// Bridges IOpenClawLogger to our static Logger for gateway client diagnostics.
+/// </summary>
+internal sealed class AppLogger : OpenClaw.Shared.IOpenClawLogger
+{
+    public void Info(string message) => Logger.Info($"[Gateway] {message}");
+    public void Debug(string message) => Logger.Info($"[Gateway.Debug] {message}");
+    public void Warn(string message) => Logger.Warn($"[Gateway] {message}");
+    public void Error(string message, Exception? ex = null) =>
+        Logger.Error(ex != null ? $"[Gateway] {message}: {ex}" : $"[Gateway] {message}");
 }
