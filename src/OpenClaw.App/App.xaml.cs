@@ -26,6 +26,8 @@ public partial class App : Application
 
     // Windows
     private MainWindow? _mainWindow;
+    private WebChatWindow? _webChatWindow;
+    private QuickSendDialog? _quickSendDialog;
 
     internal static new App Current => (App)Application.Current;
 
@@ -144,10 +146,10 @@ public partial class App : Application
                 OpenDashboard();
                 break;
             case "webchat":
-                // TODO: open WebChatWindow
+                OpenWebChat();
                 break;
             case "quicksend":
-                // TODO: open QuickSendDialog
+                OpenQuickSend();
                 break;
             case "exit":
                 ExitApp();
@@ -177,6 +179,50 @@ public partial class App : Application
             var httpUrl = gwUrl.Replace("ws://", "http://").Replace("wss://", "https://");
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(httpUrl) { UseShellExecute = true });
         }
+    }
+
+    internal void OpenWebChat()
+    {
+        _dispatcherQueue?.TryEnqueue(() =>
+        {
+            if (_webChatWindow != null && !_webChatWindow.IsClosed)
+            {
+                _webChatWindow.Activate();
+                return;
+            }
+
+            var gwUrl = Settings?.GetEffectiveGatewayUrl();
+            var token = Settings?.Token;
+            if (string.IsNullOrEmpty(gwUrl) || string.IsNullOrEmpty(token))
+            {
+                Logger.Warn("Cannot open web chat: gateway URL or token not configured");
+                return;
+            }
+
+            _webChatWindow = new WebChatWindow(gwUrl, token);
+            _webChatWindow.Activate();
+        });
+    }
+
+    internal void OpenQuickSend()
+    {
+        _dispatcherQueue?.TryEnqueue(() =>
+        {
+            if (_quickSendDialog != null)
+            {
+                try { _quickSendDialog.Close(); } catch { }
+            }
+
+            var client = Gateway?.Client;
+            if (client == null)
+            {
+                Logger.Warn("Cannot open quick send: gateway client not available");
+                return;
+            }
+
+            _quickSendDialog = new QuickSendDialog(client);
+            _quickSendDialog.Activate();
+        });
     }
 
     internal async Task RequestHealthCheckAsync()
