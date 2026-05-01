@@ -28,8 +28,40 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
 
     private const string PipeName = "OpenClawTray-DeepLink";
     
@@ -363,14 +395,28 @@ public partial class App : Application
 
     private void InitializeKeepAliveWindow()
     {
-        // Create a hidden window to keep the WinUI runtime properly initialized
-        // This prevents GC/threading issues when creating windows after idle
+        // Create a hidden window to keep the WinUI runtime properly initialized.
+        // This prevents GC/threading issues when creating windows after idle.
+        // We activate it once so the XAML visual tree is fully laid out —
+        // required for MenuFlyout.ShowAt() to work later.
         _keepAliveWindow = new Window();
         _keepAliveWindow.Content = new Microsoft.UI.Xaml.Controls.Grid();
         _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
         
         // Move off-screen and set minimal size
         _keepAliveWindow.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
+
+        // Activate once to initialize the visual tree and XamlRoot rendering surface
+        _keepAliveWindow.Activate();
+
+        // Strip title bar and border via Win32 so nothing is visible when
+        // the window is moved on-screen to anchor the MenuFlyout.
+        const int GWL_STYLE = -16;
+        const int WS_CAPTION = 0x00C00000;
+        const int WS_THICKFRAME = 0x00040000;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_keepAliveWindow);
+        int style = GetWindowLong(hwnd, GWL_STYLE);
+        SetWindowLong(hwnd, GWL_STYLE, style & ~WS_CAPTION & ~WS_THICKFRAME);
     }
 
     private void InitializeTrayIcon()
@@ -398,14 +444,14 @@ public partial class App : Application
 
     private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
     {
-        // Left-click: show simplified popup menu
-        ShowTrayMenuPopup();
+        // Left-click: show WinUI MenuFlyout
+        ShowTrayMenuFlyout();
     }
 
     private void OnTrayContextMenu(TrayIcon sender, TrayIconEventArgs e)
     {
-        // Right-click: show simplified popup menu
-        ShowTrayMenuPopup();
+        // Right-click: show WinUI MenuFlyout
+        ShowTrayMenuFlyout();
     }
 
     private MenuFlyout BuildTrayMenuFlyout()
@@ -451,6 +497,67 @@ public partial class App : Application
         flyout.Items.Add(exitItem);
 
         return flyout;
+    }
+
+    private void ShowTrayMenuFlyout()
+    {
+        try
+        {
+            var anchor = _keepAliveWindow?.Content as FrameworkElement;
+            if (anchor?.XamlRoot == null)
+            {
+                Logger.Warn("Cannot show tray menu — keep-alive window XamlRoot not ready");
+                return;
+            }
+
+            // Pre-fetch latest data
+            if (_gatewayClient != null && _currentStatus == ConnectionStatus.Connected)
+            {
+                try
+                {
+                    _ = _gatewayClient.CheckHealthAsync();
+                    _ = _gatewayClient.RequestSessionsAsync();
+                    _ = _gatewayClient.RequestUsageAsync();
+                }
+                catch { /* ignore */ }
+            }
+
+            // Position the anchor at bottom-right, just above the taskbar.
+            // This is a fixed position — the flyout always opens from the same spot.
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_keepAliveWindow);
+            var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                _keepAliveWindow!.AppWindow.Id,
+                Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+            var workArea = displayArea.WorkArea;
+
+            // Bottom-right corner of the work area (just above taskbar)
+            _keepAliveWindow.AppWindow.MoveAndResize(
+                new global::Windows.Graphics.RectInt32(workArea.Width + workArea.X - 2, workArea.Height + workArea.Y - 2, 2, 2));
+
+            // Activate + foreground + topmost so the flyout renders above
+            // the system tray overflow panel and dismisses on outside click.
+            _keepAliveWindow.Activate();
+            var presenter = _keepAliveWindow.AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+            if (presenter != null) presenter.IsAlwaysOnTop = true;
+            SetForegroundWindow(hwnd);
+
+            var flyout = BuildTrayMenuFlyout();
+            flyout.Closed += (_, _) =>
+            {
+                if (_keepAliveWindow != null)
+                {
+                    var p = _keepAliveWindow.AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+                    if (p != null) p.IsAlwaysOnTop = false;
+                    _keepAliveWindow.AppWindow.MoveAndResize(
+                        new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
+                }
+            };
+            flyout.ShowAt(anchor);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to show tray menu flyout: {ex.Message}");
+        }
     }
 
     private void ShowTrayMenuNative()
