@@ -1562,8 +1562,17 @@ public class OpenClawGatewayClient : WebSocketClientBase
 
         if (item.TryGetProperty("startedAt", out var started))
         {
-            if (DateTime.TryParse(started.GetString(), out var dt))
-                session.StartedAt = dt;
+            if (started.ValueKind == JsonValueKind.String)
+            {
+                if (DateTime.TryParse(started.GetString(), out var dt))
+                    session.StartedAt = dt;
+            }
+            else if (started.ValueKind == JsonValueKind.Number && started.TryGetDouble(out var rawMs))
+            {
+                var ms = rawMs > 10_000_000_000 ? rawMs : rawMs * 1000;
+                try { session.StartedAt = DateTimeOffset.FromUnixTimeMilliseconds((long)ms).UtcDateTime; }
+                catch { /* ignore overflow */ }
+            }
         }
     }
 

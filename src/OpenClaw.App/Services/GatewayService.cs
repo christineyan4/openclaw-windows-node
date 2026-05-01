@@ -135,6 +135,12 @@ public sealed class GatewayService : IDisposable
     {
         Logger.Info($"[GatewayService] StatusChanged → {status}");
         PostUpdate(() => { CurrentStatus = status; AuthFailureMessage = null; });
+
+        if (status == ConnectionStatus.Connected)
+        {
+            // Request initial data from gateway
+            _ = RequestRefreshAsync();
+        }
     }
 
     private void OnAuthFailed(object? s, string msg)

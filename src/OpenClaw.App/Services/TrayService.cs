@@ -157,22 +157,10 @@ public sealed class TrayService : IDisposable
 
         flyout.Items.Add(new MenuFlyoutSeparator());
 
-        // Sessions submenu
+        // Sessions (links to Sessions page)
         var sessions = Gateway?.LastSessions;
-        if (sessions != null && sessions.Length > 0)
-        {
-            var sessionsMenu = new MenuFlyoutSubItem
-            {
-                Text = $"📋 Sessions ({sessions.Length})"
-            };
-            foreach (var session in sessions.Take(5))
-            {
-                var si = new MenuFlyoutItem { Text = session.DisplayText, Tag = $"session:{session.Key}" };
-                si.Click += OnItemClick;
-                sessionsMenu.Items.Add(si);
-            }
-            flyout.Items.Add(sessionsMenu);
-        }
+        var sessionCount = sessions?.Length ?? 0;
+        AddEmojiItem(flyout, "📋", $"Sessions ({sessionCount})", "sessions");
 
         // Quick actions
         AddEmojiItem(flyout, "🦞", "Open OpenClaw", "overview");

@@ -13,9 +13,13 @@ public sealed partial class SessionsPage : Page
         InitializeComponent();
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        LoadData();
+
+        // Request fresh data from gateway, then reload
+        await App.Current.RequestHealthCheckAsync();
         LoadData();
     }
 
