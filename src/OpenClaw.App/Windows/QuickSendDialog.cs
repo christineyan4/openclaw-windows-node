@@ -40,25 +40,54 @@ public sealed class QuickSendDialog : WindowEx
         _client = client;
 
         Title = "Quick Send";
-        this.SetWindowSize(420, 260);
+        this.SetWindowSize(420, 360);
         this.CenterOnScreen();
         this.SetIcon(IconHelper.GetStatusIconPath(ConnectionStatus.Connected));
 
+        ExtendsContentIntoTitleBar = true;
         BackdropHelper.TrySetAcrylicBackdrop(this);
-        this.IsAlwaysOnTop = true;
 
         var root = new Grid { RowSpacing = 12 };
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // branding
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // subtitle
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // text input
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // error
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // buttons
+
+        var molty = new TextBlock
+        {
+            Text = "🦞",
+            FontSize = 48,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var brandName = new TextBlock
+        {
+            Text = "OpenClaw",
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        var brandingPanel = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 4)
+        };
+        brandingPanel.Children.Add(molty);
+        brandingPanel.Children.Add(brandName);
+        Grid.SetRow(brandingPanel, 0);
+        root.Children.Add(brandingPanel);
 
         var header = new TextBlock
         {
-            Text = "Send a message to OpenClaw",
-            Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"]
+            Text = "What can I help with?",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Opacity = 0.5
         };
-        Grid.SetRow(header, 0);
+        Grid.SetRow(header, 1);
         root.Children.Add(header);
 
         _messageTextBox = new TextBox
@@ -68,7 +97,7 @@ public sealed class QuickSendDialog : WindowEx
             Text = prefillMessage ?? ""
         };
         _messageTextBox.KeyDown += OnKeyDown;
-        Grid.SetRow(_messageTextBox, 1);
+        Grid.SetRow(_messageTextBox, 2);
         root.Children.Add(_messageTextBox);
 
         _errorDetailsTextBox = new TextBox
@@ -83,7 +112,7 @@ public sealed class QuickSendDialog : WindowEx
             VerticalAlignment = VerticalAlignment.Stretch
         };
         ScrollViewer.SetVerticalScrollBarVisibility(_errorDetailsTextBox, ScrollBarVisibility.Auto);
-        Grid.SetRow(_errorDetailsTextBox, 2);
+        Grid.SetRow(_errorDetailsTextBox, 3);
         root.Children.Add(_errorDetailsTextBox);
 
         var buttonPanel = new StackPanel
@@ -105,14 +134,34 @@ public sealed class QuickSendDialog : WindowEx
         _sendButton.Click += OnSendClick;
         buttonPanel.Children.Add(_sendButton);
 
-        Grid.SetRow(buttonPanel, 3);
+        Grid.SetRow(buttonPanel, 4);
         root.Children.Add(buttonPanel);
 
-        Content = new Border
+        var titleBar = new TextBlock
         {
-            Padding = new Thickness(24),
+            Text = "Quick Send",
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+
+        var outerGrid = new Grid();
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) }); // title bar
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        outerGrid.Children.Add(titleBar);
+        Grid.SetRow(titleBar, 0);
+
+        var contentBorder = new Border
+        {
+            Padding = new Thickness(24, 0, 24, 24),
             Child = root
         };
+        Grid.SetRow(contentBorder, 1);
+        outerGrid.Children.Add(contentBorder);
+
+        Content = outerGrid;
+        SetTitleBar(titleBar);
 
         Activated += (s, e) =>
         {

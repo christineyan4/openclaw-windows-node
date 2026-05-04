@@ -71,8 +71,9 @@ public partial class App : Application
             Notifications.HandleNotification(notification, Settings);
         };
 
-        // Wire tray menu actions
-        Tray.MenuItemClicked += OnTrayMenuItemClicked;
+        // Wire tray click actions
+        Tray.QuickSendRequested += (_, _) => OpenQuickSend();
+        Tray.MainWindowRequested += (_, _) => ShowMainWindow();
 
         // Toast activation
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
@@ -129,33 +130,7 @@ public partial class App : Application
         _healthTimer.Start();
     }
 
-    // --- Menu action routing ---
-    private void OnTrayMenuItemClicked(object? sender, string action)
-    {
-        switch (action)
-        {
-            case "overview":
-            case "activity":
-            case "sessions":
-            case "node":
-            case "diagnostics":
-            case "settings":
-                ShowMainWindow(action);
-                break;
-            case "dashboard":
-                OpenDashboard();
-                break;
-            case "webchat":
-                OpenWebChat();
-                break;
-            case "quicksend":
-                OpenQuickSend();
-                break;
-            case "exit":
-                ExitApp();
-                break;
-        }
-    }
+
 
     internal void ShowMainWindow(string? route = null)
     {

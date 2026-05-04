@@ -34,6 +34,8 @@ public sealed partial class WebChatWindow : WindowEx
         _token = token;
 
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         _dispatcherQueue = DispatcherQueue;
 
         this.SetWindowSize(520, 750);

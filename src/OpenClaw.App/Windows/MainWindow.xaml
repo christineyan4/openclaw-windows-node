@@ -11,12 +11,25 @@
         <MicaBackdrop/>
     </Window.SystemBackdrop>
 
-    <NavigationView
-        x:Name="NavView"
-        IsSettingsVisible="False"
-        IsBackButtonVisible="Collapsed"
-        PaneDisplayMode="Left"
-        SelectionChanged="NavView_SelectionChanged">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="AppTitleBar" Grid.Row="0"
+                   Text="🦞 OpenClaw"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   VerticalAlignment="Center"
+                   Margin="12,0,0,0"/>
+
+        <NavigationView
+            Grid.Row="1"
+            x:Name="NavView"
+            IsSettingsVisible="False"
+            IsBackButtonVisible="Collapsed"
+            PaneDisplayMode="Left"
+            SelectionChanged="NavView_SelectionChanged">
 
         <NavigationView.MenuItems>
             <NavigationViewItem Content="Overview" Tag="overview">
@@ -53,4 +66,5 @@
 
         <Frame x:Name="ContentFrame"/>
     </NavigationView>
+    </Grid>
 </winex:WindowEx>

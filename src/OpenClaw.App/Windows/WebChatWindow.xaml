@@ -12,12 +12,19 @@
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
+        <TextBlock x:Name="AppTitleBar" Grid.Row="0"
+                   Text="OpenClaw Chat"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   VerticalAlignment="Center"
+                   Margin="12,0,0,0"/>
+
         <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Padding="8,8,16,8"
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Padding="8,4,16,8"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
             
             <Button x:Name="HomeButton" ToolTipService.ToolTip="Home" Click="OnHome"
@@ -43,14 +50,14 @@
         </StackPanel>
 
         <!-- WebView2 -->
-        <WebView2 x:Name="WebView" Grid.Row="1"/>
+        <WebView2 x:Name="WebView" Grid.Row="2"/>
         
         <!-- Loading indicator -->
-        <ProgressRing x:Name="LoadingRing" Grid.Row="1" IsActive="True" 
+        <ProgressRing x:Name="LoadingRing" Grid.Row="2" IsActive="True" 
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
         
         <!-- Error display (hidden by default) -->
-        <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
+        <ScrollViewer x:Name="ErrorPanel" Grid.Row="2" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold" 
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>

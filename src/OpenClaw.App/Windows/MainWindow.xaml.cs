@@ -23,6 +23,8 @@ public sealed partial class MainWindow : WindowEx
     public MainWindow()
     {
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         this.SetWindowSize(900, 640);
         this.CenterOnScreen();
         Closed += (_, _) => IsClosed = true;
