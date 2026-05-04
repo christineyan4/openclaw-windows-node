@@ -30,6 +30,7 @@ public sealed class QuickSendDialog : WindowEx
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
     private const int SW_SHOWNORMAL = 1;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
@@ -49,7 +50,7 @@ public sealed class QuickSendDialog : WindowEx
 
         var root = new Grid { RowSpacing = 12 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // branding
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // subtitle
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // subtitle + status
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // text input
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // error
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // buttons
@@ -80,6 +81,8 @@ public sealed class QuickSendDialog : WindowEx
         Grid.SetRow(brandingPanel, 0);
         root.Children.Add(brandingPanel);
 
+        var isConnected = _client.IsConnectedToGateway;
+
         var header = new TextBlock
         {
             Text = "What can I help with?",
@@ -87,8 +90,43 @@ public sealed class QuickSendDialog : WindowEx
             HorizontalAlignment = HorizontalAlignment.Center,
             Opacity = 0.5
         };
-        Grid.SetRow(header, 1);
-        root.Children.Add(header);
+
+        var statusDot = new TextBlock
+        {
+            Text = "●",
+            Foreground = isConnected
+                ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.LimeGreen)
+                : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+            FontSize = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0)
+        };
+
+        var statusLabel = new TextBlock
+        {
+            Text = isConnected ? "Connected" : "Disconnected",
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Opacity = 0.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var statusPill = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        statusPill.Children.Add(statusDot);
+        statusPill.Children.Add(statusLabel);
+
+        var subtitlePanel = new StackPanel
+        {
+            Spacing = 4,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        subtitlePanel.Children.Add(header);
+
+        Grid.SetRow(subtitlePanel, 1);
+        root.Children.Add(subtitlePanel);
 
         _messageTextBox = new TextBox
         {
@@ -115,6 +153,14 @@ public sealed class QuickSendDialog : WindowEx
         Grid.SetRow(_errorDetailsTextBox, 3);
         root.Children.Add(_errorDetailsTextBox);
 
+        var bottomRow = new Grid();
+        bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        statusPill.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(statusPill, 0);
+        bottomRow.Children.Add(statusPill);
+
         var buttonPanel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -134,8 +180,11 @@ public sealed class QuickSendDialog : WindowEx
         _sendButton.Click += OnSendClick;
         buttonPanel.Children.Add(_sendButton);
 
-        Grid.SetRow(buttonPanel, 4);
-        root.Children.Add(buttonPanel);
+        Grid.SetColumn(buttonPanel, 1);
+        bottomRow.Children.Add(buttonPanel);
+
+        Grid.SetRow(bottomRow, 4);
+        root.Children.Add(bottomRow);
 
         var titleBar = new TextBlock
         {
@@ -165,12 +214,21 @@ public sealed class QuickSendDialog : WindowEx
 
         Activated += (s, e) =>
         {
+            var args = e as Microsoft.UI.Xaml.WindowActivatedEventArgs;
+            if (args?.WindowActivationState == WindowActivationState.Deactivated)
+            {
+                if (!_isSending)
+                    Close();
+                return;
+            }
             TryBringToFront();
             _messageTextBox.Focus(FocusState.Programmatic);
         };
 
         Logger.Info($"[QuickSend] Dialog opened");
     }
+
+    public void BringToFront() => TryBringToFront();
 
     private void TryBringToFront()
     {
@@ -180,6 +238,7 @@ public sealed class QuickSendDialog : WindowEx
             if (hwnd == IntPtr.Zero) return;
             ShowWindow(hwnd, SW_SHOWNORMAL);
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             SetForegroundWindow(hwnd);
         }
         catch (Exception ex)

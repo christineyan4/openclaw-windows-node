@@ -197,6 +197,7 @@ public partial class App : Application
 
             _quickSendDialog = new QuickSendDialog(client);
             _quickSendDialog.Activate();
+            _quickSendDialog.BringToFront();
         });
     }
 
