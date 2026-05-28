@@ -66,6 +66,71 @@ public class TrayMenuWindowMarkupTests
     }
 
     [Fact]
+    public void CanvasWindow_TreatsLoopbackAliasesAsTrustedGatewayOrigin()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("BuildGatewayAuthFilters", source);
+        Assert.Contains("IsLoopbackAlias", source);
+        Assert.Contains("\"localhost\", \"127.0.0.1\", \"[::1]\"", source);
+        Assert.Contains("IsUriForOrigin(url, _trustedGatewayOrigin)", source);
+        Assert.Contains("IsUriForOrigin(args.Request.Uri, trustedOrigin)", source);
+    }
+
+    [Fact]
+    public void CanvasWindow_MapsCanvasDocumentsBeforeOriginRewrite()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "CanvasWindow.xaml.cs");
+
+        var source = File.ReadAllText(sourcePath);
+
+        var localMapIndex = source.IndexOf("TryMapCanvasDocumentToLocalUrl(url", StringComparison.Ordinal);
+        var originRewriteIndex = source.IndexOf("If the URL's origin differs", StringComparison.Ordinal);
+
+        Assert.True(localMapIndex >= 0, "Canvas document URLs should be checked for local virtual-host mapping.");
+        Assert.True(originRewriteIndex >= 0, "Origin rewrite logic should still exist.");
+        Assert.True(localMapIndex < originRewriteIndex,
+            "Canvas document local mapping must happen before origin rewrite so localhost/127 aliases do not skip local files.");
+        Assert.Contains("Path.Combine(\"documents\", localRelative.Replace", source);
+    }
+
+    [Fact]
+    public void NodeService_UsesSharedGatewayTokenForCanvasHttpRequests()
+    {
+        var sourcePath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs");
+        var appPath = Path.Combine(
+            GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.xaml.cs");
+
+        var nodeService = File.ReadAllText(sourcePath);
+        var app = File.ReadAllText(appPath);
+
+        Assert.Contains("Func<string?> _canvasHttpTokenProvider", nodeService);
+        Assert.Contains("ResolveCanvasHttpToken()", nodeService);
+        Assert.Contains("SetTrustedGatewayOrigin(GatewayUrl, ResolveCanvasHttpToken())", nodeService);
+        Assert.Contains("canvasHttpTokenProvider: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken", app);
+    }
+
+    [Fact]
     public void Source_DoesNotDeclareAsyncVoidHandlers()
     {
         var sourceRoot = Path.Combine(GetRepositoryRoot(), "src");

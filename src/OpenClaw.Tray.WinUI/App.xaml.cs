@@ -1630,6 +1630,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _dispatcherQueue,
                 DataPath,
                 () => _keepAliveWindow?.Content as FrameworkElement,
+                canvasHttpTokenProvider: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
                 settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath);

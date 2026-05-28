@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -41,6 +42,7 @@ public sealed partial class CanvasWindow : WindowEx
     private bool _isWebViewInitialized;
     private string? _pendingUrl;
     private string? _pendingHtml;
+    private string? _lastNavigationUrl;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<bool>? _navigationTcs;
 
@@ -53,7 +55,7 @@ public sealed partial class CanvasWindow : WindowEx
     private readonly DispatcherQueue? _dispatcherQueue;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebMessageReceivedEventArgs>? _webMessageReceivedHandler;
     private TypedEventHandler<CoreWebView2, CoreWebView2WebResourceRequestedEventArgs>? _webResourceRequestedHandler;
-    private string? _webResourceRequestedFilter;
+    private readonly List<string> _webResourceRequestedFilters = new();
 
     /// <summary>
     /// Fired when the SPA sends a message to the native side via
@@ -91,13 +93,11 @@ public sealed partial class CanvasWindow : WindowEx
         {
             return true;
         }
-        // Allow URLs from the trusted gateway origin with strict boundary check
-        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
-            url.StartsWith(_trustedGatewayOrigin, StringComparison.OrdinalIgnoreCase) &&
-            (url.Length == _trustedGatewayOrigin.Length ||
-             url[_trustedGatewayOrigin.Length] == '/' ||
-             url[_trustedGatewayOrigin.Length] == '?' ||
-             url[_trustedGatewayOrigin.Length] == '#'))
+        // Allow URLs from the trusted gateway origin with strict boundary
+        // checks. Loopback aliases are equivalent for the same scheme+port:
+        // gateway canvas URLs can arrive as localhost while the active
+        // connection is 127.0.0.1 (or vice versa).
+        if (IsUriForOrigin(url, _trustedGatewayOrigin))
         {
             return true;
         }
@@ -167,6 +167,13 @@ public sealed partial class CanvasWindow : WindowEx
 
         try
         {
+            // Prefer the local virtual-host mapping for gateway canvas document
+            // URLs before any origin rewrite. Otherwise a harmless localhost ↔
+            // 127.0.0.1 alias mismatch causes an early rewrite+return and skips
+            // the local file entirely.
+            if (TryMapCanvasDocumentToLocalUrl(url, out var localUrl))
+                return localUrl;
+
             // Handle relative paths — prepend the gateway origin
             if (url.StartsWith("/"))
             {
@@ -192,22 +199,6 @@ public sealed partial class CanvasWindow : WindowEx
             // Same origin — just add token if needed
             url = AppendGatewayToken(url);
 
-            // If this is a canvas document path and we have it locally, use the virtual host
-            if (url.Contains("/__openclaw__/canvas/documents/") && !string.IsNullOrEmpty(_canvasDir))
-            {
-                var pathPart = new Uri(url).AbsolutePath;
-                var localRelative = pathPart.Replace("/__openclaw__/canvas/documents/", "");
-                var localPath = Path.GetFullPath(Path.Combine(_canvasDir, localRelative.Replace('/', Path.DirectorySeparatorChar)));
-                // Containment check — block directory traversal
-                if (localPath.StartsWith(_canvasDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(localPath))
-                {
-                    var localUrl = $"https://openclaw-canvas.local/{localRelative}";
-                    Logger.Info($"[Canvas] Using local file: {localUrl}");
-                    return localUrl;
-                }
-            }
-
             return url;
         }
         catch (Exception ex)
@@ -215,6 +206,61 @@ public sealed partial class CanvasWindow : WindowEx
             Logger.Warn($"[Canvas] URL rewrite failed: {ex.Message}");
         }
         return url;
+    }
+
+    private bool TryMapCanvasDocumentToLocalUrl(string url, out string localUrl)
+    {
+        localUrl = "";
+        if (string.IsNullOrEmpty(_canvasDir))
+            return false;
+
+        string pathPart;
+        if (url.StartsWith("/", StringComparison.Ordinal))
+        {
+            pathPart = url.Split('?', '#')[0];
+        }
+        else if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            pathPart = uri.AbsolutePath;
+        }
+        else
+        {
+            return false;
+        }
+
+        const string documentsPrefix = "/__openclaw__/canvas/documents/";
+        if (!pathPart.StartsWith(documentsPrefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var localRelative = Uri.UnescapeDataString(pathPart[documentsPrefix.Length..]);
+        if (string.IsNullOrWhiteSpace(localRelative))
+            return false;
+
+        var candidates = new[]
+        {
+            localRelative,
+            Path.Combine("documents", localRelative.Replace('/', Path.DirectorySeparatorChar))
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var localPath = Path.GetFullPath(Path.Combine(
+                _canvasDir,
+                candidate.Replace('/', Path.DirectorySeparatorChar)));
+
+            if (!localPath.StartsWith(_canvasDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(localPath))
+            {
+                continue;
+            }
+
+            var virtualRelative = candidate.Replace(Path.DirectorySeparatorChar, '/');
+            localUrl = $"https://openclaw-canvas.local/{virtualRelative}";
+            Logger.Info($"[Canvas] Using local file: {localUrl}");
+            return true;
+        }
+
+        return false;
     }
 
     private string AppendGatewayToken(string url)
@@ -328,10 +374,11 @@ public sealed partial class CanvasWindow : WindowEx
                 if (IsUrlSafe(url))
                 {
                     CanvasWebView.CoreWebView2.Navigate(url);
+                    _lastNavigationUrl = url;
                 }
                 else
                 {
-                    Logger.Warn($"[Canvas] Blocked pending URL: {url.Substring(0, Math.Min(50, url.Length))}...");
+                    ShowNavigationError($"Blocked pending URL for security: {UrlLogSanitizer.Sanitize(url)}");
                 }
             }
             else if (_pendingHtml != null)
@@ -388,11 +435,15 @@ public sealed partial class CanvasWindow : WindowEx
         if (string.IsNullOrEmpty(_trustedGatewayOrigin) || string.IsNullOrEmpty(_gatewayToken))
             return;
 
-        _webResourceRequestedFilter = $"{_trustedGatewayOrigin}/*";
+        foreach (var filter in BuildGatewayAuthFilters(_trustedGatewayOrigin))
+        {
+            coreWebView2.AddWebResourceRequestedFilter(filter, CoreWebView2WebResourceContext.All);
+            _webResourceRequestedFilters.Add(filter);
+        }
+
         _webResourceRequestedHandler = OnGatewayWebResourceRequested;
-        coreWebView2.AddWebResourceRequestedFilter(_webResourceRequestedFilter, CoreWebView2WebResourceContext.All);
         coreWebView2.WebResourceRequested += _webResourceRequestedHandler;
-        Logger.Info("[Canvas] WebView2 auth header injection configured for gateway requests");
+        Logger.Info($"[Canvas] WebView2 auth header injection configured for gateway requests ({_webResourceRequestedFilters.Count} origin filter(s))");
     }
 
     private void RemoveGatewayAuthHeaderInjection(CoreWebView2 coreWebView2)
@@ -403,11 +454,11 @@ public sealed partial class CanvasWindow : WindowEx
             _webResourceRequestedHandler = null;
         }
 
-        if (!string.IsNullOrEmpty(_webResourceRequestedFilter))
+        foreach (var filter in _webResourceRequestedFilters)
         {
-            coreWebView2.RemoveWebResourceRequestedFilter(_webResourceRequestedFilter, CoreWebView2WebResourceContext.All);
-            _webResourceRequestedFilter = null;
+            coreWebView2.RemoveWebResourceRequestedFilter(filter, CoreWebView2WebResourceContext.All);
         }
+        _webResourceRequestedFilters.Clear();
     }
 
     private void OnGatewayWebResourceRequested(CoreWebView2 sender, CoreWebView2WebResourceRequestedEventArgs args)
@@ -425,6 +476,9 @@ public sealed partial class CanvasWindow : WindowEx
     
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
+        var failedUrl = string.IsNullOrWhiteSpace(sender.Source)
+            ? _lastNavigationUrl
+            : sender.Source;
         if (_navigationTcs != null)
         {
             var tcs = _navigationTcs;
@@ -441,13 +495,12 @@ public sealed partial class CanvasWindow : WindowEx
         
         if (!args.IsSuccess)
         {
-            // Show error for failed navigation
-            ErrorPanel.Visibility = Visibility.Visible;
-            CanvasWebView.Visibility = Visibility.Collapsed;
-            ErrorText.Text = $"Navigation failed: {args.WebErrorStatus}";
+            Logger.Warn($"[Canvas] Navigation failed: {args.WebErrorStatus} while loading {UrlLogSanitizer.Sanitize(failedUrl)}");
+            ShowNavigationError($"Navigation failed: {args.WebErrorStatus}");
         }
         else
         {
+            _lastNavigationUrl = null;
             ErrorPanel.Visibility = Visibility.Collapsed;
             CanvasWebView.Visibility = Visibility.Visible;
         }
@@ -509,11 +562,13 @@ public sealed partial class CanvasWindow : WindowEx
         // Validate URL - block dangerous schemes and private networks
         if (!IsUrlSafe(url))
         {
-            throw new ArgumentException($"URL blocked for security: {url.Substring(0, Math.Min(50, url.Length))}...");
+            ShowNavigationError($"URL blocked for security: {UrlLogSanitizer.Sanitize(url)}");
+            throw new ArgumentException($"URL blocked for security: {UrlLogSanitizer.Sanitize(url)}");
         }
         
         if (_isWebViewInitialized)
         {
+            _lastNavigationUrl = url;
             CanvasWebView.CoreWebView2.Navigate(url);
         }
         else
@@ -693,13 +748,54 @@ public sealed partial class CanvasWindow : WindowEx
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsUriForOrigin(string uri, string origin)
+    private static IEnumerable<string> BuildGatewayAuthFilters(string origin)
     {
-        return uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
-            (uri.Length == origin.Length ||
-             uri[origin.Length] == '/' ||
-             uri[origin.Length] == '?' ||
-             uri[origin.Length] == '#');
+        yield return $"{origin}/*";
+
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || !IsLoopbackAlias(uri.Host))
+            yield break;
+
+        foreach (var host in new[] { "localhost", "127.0.0.1", "[::1]" })
+        {
+            var aliasOrigin = $"{uri.Scheme}://{host}:{uri.Port}";
+            if (!string.Equals(aliasOrigin, origin, StringComparison.OrdinalIgnoreCase))
+                yield return $"{aliasOrigin}/*";
+        }
+    }
+
+    private static bool IsUriForOrigin(string? uri, string? origin)
+    {
+        if (string.IsNullOrWhiteSpace(uri) || string.IsNullOrWhiteSpace(origin))
+            return false;
+
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var requestUri) ||
+            !Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(requestUri.Scheme, originUri.Scheme, StringComparison.OrdinalIgnoreCase) ||
+            requestUri.Port != originUri.Port)
+        {
+            return false;
+        }
+
+        return string.Equals(requestUri.IdnHost, originUri.IdnHost, StringComparison.OrdinalIgnoreCase) ||
+            (IsLoopbackAlias(requestUri.Host) && IsLoopbackAlias(originUri.Host));
+    }
+
+    private static bool IsLoopbackAlias(string? host) =>
+        string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(host, "[::1]", StringComparison.OrdinalIgnoreCase);
+
+    private void ShowNavigationError(string message)
+    {
+        Logger.Warn($"[Canvas] {message}");
+        ErrorPanel.Visibility = Visibility.Visible;
+        CanvasWebView.Visibility = Visibility.Collapsed;
+        ErrorText.Text = message;
     }
     
     private Task EnsureWebViewReadyAsync()

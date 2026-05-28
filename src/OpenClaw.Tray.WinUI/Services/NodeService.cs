@@ -25,6 +25,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly Func<FrameworkElement?> _rootProvider;
+    private readonly Func<string?> _canvasHttpTokenProvider;
     private readonly SettingsManager? _settings;
     private readonly SemaphoreSlim _consentLock = new(1, 1);
     private readonly object _disposeLock = new();
@@ -186,6 +187,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         DispatcherQueue dispatcherQueue,
         string dataPath,
         Func<FrameworkElement?>? rootProvider = null,
+        Func<string?>? canvasHttpTokenProvider = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null)
@@ -195,6 +197,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _dataPath = dataPath;
         _identityDataPath = string.IsNullOrWhiteSpace(identityDataPath) ? dataPath : identityDataPath;
         _rootProvider = rootProvider ?? (() => null);
+        _canvasHttpTokenProvider = canvasHttpTokenProvider ?? (() => null);
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -860,7 +863,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 if (_canvasWindow == null || _canvasWindow.IsClosed)
                 {
                     _canvasWindow = new CanvasWindow();
-                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, ResolveCanvasHttpToken());
                 }
 
                 // Configure window
@@ -1342,9 +1345,22 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (_canvasWindow == null || _canvasWindow.IsClosed)
         {
             _canvasWindow = new CanvasWindow();
-            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token);
+            _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, ResolveCanvasHttpToken());
         }
         _canvasWindow?.Activate();
+    }
+
+    private string? ResolveCanvasHttpToken()
+    {
+        var token = _canvasHttpTokenProvider();
+        if (!string.IsNullOrWhiteSpace(token))
+            return token;
+
+        // Fallback keeps legacy/test flows working, but normal gateway-backed
+        // canvas document loads should use the active gateway's shared token:
+        // node device tokens authenticate the node WebSocket but are rejected
+        // by gateway HTTP document routes.
+        return _token;
     }
 
     // Mutable context shared with GatewayActionTransport. SessionKey is updated
